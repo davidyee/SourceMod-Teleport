@@ -1,24 +1,30 @@
 /**
  * Teleporter V1.0
  * By David Y.
- * Some code adapted from bobobagan's Player Respawn plugin V1.5 at
+ * Some menu code adapted from bobobagan's Player Respawn plugin V1.5 at
  * https://forums.alliedmods.net/showthread.php?t=108708
+ * ProcessTargetString adapted from Thrawn2's forum post snippet at
+ * https://forums.alliedmods.net/showpost.php?p=1265410&postcount=2
+ * to enable @all support via chat messages
+ * Other code adapted from Official AlliedMods Wiki pages:
+ * Activities and Logging https://wiki.alliedmods.net/Introduction_to_SourceMod_Plugins
+ * Admin Menu: https://wiki.alliedmods.net/Admin_Menu_%28SourceMod_Scripting%29
  *
- * Teleports the player to the admin's current location.
+ * Teleports the player to the admin's current location. Tested only with CS:GO.
+ * You can teleport a player via the admin menu or in chat using: "!teleport <name>" or 
+ * you can also teleport players using "!teleport @all".
  */
  
 #pragma semicolon 1
- 
 #include <sourcemod>
 #include <sdktools>
 #include <cstrike>
- 
-// from https://wiki.alliedmods.net/Admin_Menu_%28SourceMod_Scripting%29
-/* Make the admin menu plugin optional */
+
+// make the admin menu plugin optional
 #undef REQUIRE_PLUGIN
 #include <adminmenu>
 
- /* Keep track of the top menu */
+// keep track of the top menu
 new Handle:hAdminMenu = INVALID_HANDLE;
 
 public Plugin:myinfo =
@@ -27,19 +33,21 @@ public Plugin:myinfo =
 	author = "David",
 	description = "Teleports players to the admin's current location",
 	version = "1.0",
-	url = ""
+	url = "http://www.sourcemod.net/"
 }
 
 public OnPluginStart() {
 	RegAdminCmd("sm_teleport", Command_Teleport, ADMFLAG_SLAY, "sm_teleport <#userid|name>");
 	
-	/* See if the menu plugin is already ready */
+	// see if the menu plugin is already ready
 	new Handle:topmenu;
 	if (LibraryExists("adminmenu") && ((topmenu = GetAdminTopMenu()) != INVALID_HANDLE))
 	{
-		/* If so, manually fire the callback */
+		// if so, manually fire the callback
 		OnAdminMenuReady(topmenu);
 	}
+	
+	LoadTranslations("common.phrases");
 }
 
 public OnLibraryRemoved(const String:name[])
@@ -52,7 +60,7 @@ public OnLibraryRemoved(const String:name[])
 
 public OnAdminMenuReady(Handle:topmenu)
 {
-	/* Block us from being called twice */
+	// block us from being called twice
 	if (topmenu == hAdminMenu)
 	{
 		return;
@@ -141,7 +149,7 @@ public MenuHandler_Players(Handle:menu, MenuAction:action, param1, param2)
 			TeleportPlayer(param1, target);
 		}
 
-		/* Re-draw the menu if they're still valid */
+		// re-draw the menu if they're still valid
 		if (IsClientInGame(param1) && !IsClientInKickQueue(param1))
 		{
 			DisplayPlayerMenu(param1);
@@ -156,21 +164,40 @@ public Action:Command_Teleport(client, args) {
 			return Plugin_Handled;
 		}
 	
-	new String:arg[65];
+	decl String:arg[32];
 	GetCmdArg(1, arg, sizeof(arg));
 
-	/* Try and find a matching player */
-	new target = FindTarget(client, arg);
-	if (target == -1)
-	{
-		/* FindTarget() automatically replies with the 
-		 * failure reason.
-		 */
-		return Plugin_Handled;
-	}
+    // process the targets
+	decl String:strTargetName[MAX_TARGET_LENGTH];
+	decl TargetList[MAXPLAYERS], TargetCount;
+	decl bool:TargetTranslate;
 	
-	TeleportPlayer(client, target);
+	TargetCount = ProcessTargetString(
+						arg, 
+						client, 
+						TargetList, 
+						MAXPLAYERS, 
+						COMMAND_FILTER_ALIVE, 
+						strTargetName, 
+						sizeof(strTargetName), 
+						TargetTranslate);
 
+	// if there are no players alive
+	if (TargetCount <= COMMAND_TARGET_NONE)
+    {
+        ReplyToTargetError(client, TargetCount);
+        return Plugin_Handled;
+    }
+
+    // apply to all targets
+	for (new i = 0; i < TargetCount; i++)
+    {
+		new target = TargetList[i];
+		if (IsClientInGame(target) ) { // add "&& !IsFakeClient(target)" to not teleport BOTS
+			TeleportPlayer(client, target);
+		}
+    }
+	
 	return Plugin_Handled;
 }
 
